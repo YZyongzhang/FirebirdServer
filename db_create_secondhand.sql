@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS messages (
   to_user_id BIGINT NOT NULL,
   content TEXT NOT NULL,
   date DATETIME DEFAULT CURRENT_TIMESTAMP,
+  -- item_id and item_title are used to associate messages with an item (may be NULL)
+  item_id VARCHAR(36) DEFAULT NULL,
+  item_title VARCHAR(255) DEFAULT NULL,
   is_read TINYINT(1) DEFAULT 0,
   PRIMARY KEY (id),
   INDEX idx_to_user (to_user_id)
@@ -76,4 +79,11 @@ CREATE TABLE IF NOT EXISTS order_items (
   PRIMARY KEY (id),
   INDEX idx_order (order_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- If you have already created the messages table without item_id/item_title,
+-- run the following ALTER statements to add the missing columns:
+-- ALTER TABLE messages ADD COLUMN item_id VARCHAR(36) DEFAULT NULL;
+-- ALTER TABLE messages ADD COLUMN item_title VARCHAR(255) DEFAULT NULL;
+
 

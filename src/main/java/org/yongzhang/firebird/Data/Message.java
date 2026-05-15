@@ -7,6 +7,9 @@ public class Message {
     private Long toUserId;
     private String content;
     private String date;
+    private String itemId;
+    private String itemTitle;
+    private Integer isRead;
 
     public Message() {}
 
@@ -27,5 +30,13 @@ public class Message {
 
     public String getDate() { return date; }
     public void setDate(String date) { this.date = date; }
-}
 
+    public String getItemId() { return itemId; }
+    public void setItemId(String itemId) { this.itemId = itemId; }
+
+    public String getItemTitle() { return itemTitle; }
+    public void setItemTitle(String itemTitle) { this.itemTitle = itemTitle; }
+
+    public Integer getIsRead() { return isRead; }
+    public void setIsRead(Integer isRead) { this.isRead = isRead; }
+}

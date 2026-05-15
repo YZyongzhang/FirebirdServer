@@ -198,25 +198,46 @@ public class SecondhandController {
     }
 
     // Messages
-    @GetMapping("/messages")
-    public Object getMessages(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                              @RequestParam Long withUserId) {
-        if (withUserId == 0) {
-            List<Map<String, Object>> conversations = messageMapper.getConversations(userId);
-            Map<String, Object> res = new HashMap<>();
-            res.put("conversations", conversations);
-            return res;
-        }
-        List<Message> msgs = messageMapper.getConversation(userId, withUserId);
-        return new MessagesResponse(msgs);
+    @GetMapping("/messages/conversations")
+    public Object getConversations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        List<Map<String, Object>> conversations = messageMapper.getConversations(userId);
+        Map<String, Object> res = new HashMap<>();
+        res.put("conversations", conversations);
+        res.put("status", "ok");
+        return res;
+    }
+
+    @GetMapping("/messages/item/{itemId}")
+    public Object getMessagesByItem(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                    @PathVariable String itemId) {
+        List<Message> msgs = messageMapper.getMessagesByItem(userId, itemId);
+        Map<String, Object> res = new HashMap<>();
+        res.put("messages", msgs);
+        res.put("status", "ok");
+        return res;
+    }
+
+    @GetMapping("/messages/conversation")
+    public Object getConversation(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                  @RequestParam Long withUserId,
+                                  @RequestParam String itemId) {
+        List<Message> msgs = messageMapper.getConversation(userId, withUserId, itemId);
+        messageMapper.markAsRead(userId, withUserId, itemId);
+        Map<String, Object> res = new HashMap<>();
+        res.put("messages", msgs);
+        res.put("status", "ok");
+        return res;
     }
 
     @PostMapping("/messages")
-    public Message sendMessage(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                               @RequestHeader(value = "X-User-Username", required = false) String username,
-                               @RequestBody Map<String, Object> payload) {
+    public Map<String, Object> sendMessage(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                           @RequestHeader(value = "X-User-Username", required = false) String username,
+                                           @RequestBody Map<String, Object> payload) {
         Long toUserId = ((Number) payload.get("toUserId")).longValue();
         String content = String.valueOf(payload.get("content"));
+        String itemId = String.valueOf(payload.get("itemId"));
+        String itemTitle = String.valueOf(payload.get("itemTitle"));
+        
         Message m = new Message();
         m.setId(UUID.randomUUID().toString());
         m.setFromUserId(userId);
@@ -224,8 +245,15 @@ public class SecondhandController {
         m.setToUserId(toUserId);
         m.setContent(content);
         m.setDate(LocalDateTime.now().format(DTF));
+        m.setItemId(itemId);
+        m.setItemTitle(itemTitle);
+        m.setIsRead(0);
         messageMapper.insert(m);
-        return m;
+        
+        Map<String, Object> res = new HashMap<>();
+        res.put("status", "ok");
+        res.put("message", m);
+        return res;
     }
 
     @GetMapping("/messages/unread-count")
