@@ -67,6 +67,12 @@ public class LoginController {
         User newUser = new User();
         newUser.setUsername(data.getUsername());
         newUser.setPassword(data.getPassword());
+        String role = data.getRole();
+        if (role != null && (role.equals("user") || role.equals("seller") || role.equals("admin"))) {
+            newUser.setRole(role);
+        } else {
+            newUser.setRole("user");
+        }
         int rows = userMapper.insertUser(newUser);
         if (rows > 0) {
             return new ApiResponse("ok", "注册成功");
