@@ -199,8 +199,14 @@ public class SecondhandController {
 
     // Messages
     @GetMapping("/messages")
-    public MessagesResponse getMessages(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                        @RequestParam Long withUserId) {
+    public Object getMessages(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                              @RequestParam Long withUserId) {
+        if (withUserId == 0) {
+            List<Map<String, Object>> conversations = messageMapper.getConversations(userId);
+            Map<String, Object> res = new HashMap<>();
+            res.put("conversations", conversations);
+            return res;
+        }
         List<Message> msgs = messageMapper.getConversation(userId, withUserId);
         return new MessagesResponse(msgs);
     }
