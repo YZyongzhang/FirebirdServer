@@ -54,6 +54,43 @@ public class UserController {
         
         return new ApiResponse("ok", null, data);
     }
+    
+    // 获取商家列表（管理员用）
+    @GetMapping("/sellers")
+    public ApiResponse getSellers(
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!"admin".equals(role)) {
+            return new ApiResponse("error", "无权限");
+        }
+        
+        List<User> sellers = userMapper.getSellers();
+        // 移除敏感信息
+        for (User seller : sellers) {
+            seller.setPassword(null);
+            seller.setIdCard(null);
+        }
+        
+        return new ApiResponse("ok", null, sellers);
+    }
+    
+    // 获取商家详情（管理员用）
+    @GetMapping("/sellers/{id}")
+    public ApiResponse getSellerById(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!"admin".equals(role)) {
+            return new ApiResponse("error", "无权限");
+        }
+        
+        User seller = userMapper.findById(id);
+        if (seller != null && "seller".equals(seller.getRole())) {
+            seller.setPassword(null);
+            seller.setIdCard(null); // 隐藏身份证号
+            return new ApiResponse("ok", null, seller);
+        } else {
+            return new ApiResponse("error", "商家不存在");
+        }
+    }
 
     @GetMapping("/{id}")
     public ApiResponse getUserById(@PathVariable Long id) {
@@ -78,6 +115,57 @@ public class UserController {
             return new ApiResponse("ok", null, user);
         } else {
             return new ApiResponse("error", "用户不存在");
+        }
+    }
+    
+    // 商家注册（包含额外信息）
+    @PostMapping("/register/seller")
+    public ApiResponse registerSeller(@RequestBody Map<String, String> body) {
+        String username = body.get("username");
+        String password = body.get("password");
+        String phone = body.get("phone");
+        String idCard = body.get("idCard");
+        String address = body.get("address");
+        String businessType = body.get("businessType");
+        String description = body.get("description");
+        
+        // 验证必填字段
+        if (username == null || username.trim().isEmpty()) {
+            return new ApiResponse("error", "用户名不能为空");
+        }
+        if (password == null || password.trim().isEmpty()) {
+            return new ApiResponse("error", "密码不能为空");
+        }
+        if (phone == null || phone.trim().isEmpty()) {
+            return new ApiResponse("error", "手机号不能为空");
+        }
+        if (idCard == null || idCard.trim().isEmpty()) {
+            return new ApiResponse("error", "身份证号不能为空");
+        }
+        if (address == null || address.trim().isEmpty()) {
+            return new ApiResponse("error", "地址不能为空");
+        }
+        
+        // 检查用户名是否已存在
+        if (userMapper.findByUsername(username) != null) {
+            return new ApiResponse("error", "用户名已存在");
+        }
+        
+        User user = new User();
+        user.setUsername(username);
+        user.setPassword(password);
+        user.setRole("seller");
+        user.setPhone(phone);
+        user.setIdCard(idCard);
+        user.setAddress(address);
+        user.setBusinessType(businessType);
+        user.setDescription(description);
+        
+        int rows = userMapper.insertSeller(user);
+        if (rows > 0) {
+            return new ApiResponse("ok", "注册成功");
+        } else {
+            return new ApiResponse("error", "注册失败");
         }
     }
 

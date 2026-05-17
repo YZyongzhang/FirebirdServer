@@ -35,7 +35,7 @@ public interface ItemMapper {
     @Update("UPDATE items SET status = #{status} WHERE id = #{id}")
     int updateStatus(@Param("id") String id, @Param("status") String status);
 
-    @Update("UPDATE items SET status = 'offline' WHERE id = #{id} AND (seller_id = #{sellerId} OR EXISTS (SELECT 1 FROM users WHERE id = #{sellerId} AND role = 'admin'))")
+    @Update("UPDATE items SET status = 'offline' WHERE id = #{id} AND (seller_id = #{sellerId} OR EXISTS (SELECT 1 FROM user WHERE id = #{sellerId} AND role = 'admin'))")
     int offline(@Param("id") String id, @Param("sellerId") Long sellerId);
 
     @Insert("INSERT INTO items(id, title, price, thumb, images, description, seller_id, seller_name, date, category, status) "

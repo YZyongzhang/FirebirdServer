@@ -28,6 +28,12 @@ public interface UserMapper {
     @Insert("INSERT INTO user(username, password, role) VALUES(#{username}, #{password}, #{role})")
     @Options(useGeneratedKeys = true, keyProperty = "id")
     int insertUser(User user);
+    
+    // 商家注册（包含额外信息）
+    @Insert("INSERT INTO user(username, password, role, phone, id_card, address, business_type, description) " +
+            "VALUES(#{username}, #{password}, #{role}, #{phone}, #{idCard}, #{address}, #{businessType}, #{description})")
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    int insertSeller(User user);
 
     @Select("SELECT * FROM user")
     List<User> findAll();

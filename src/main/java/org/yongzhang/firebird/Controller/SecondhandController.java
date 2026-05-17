@@ -32,6 +32,9 @@ public class SecondhandController {
     @Autowired
     private OrderMapper orderMapper;
 
+    @Autowired
+    private UserMapper userMapper;
+
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String NGINX_IMAGE_PATH = "E:/yongzhang/Nginx_server/images/";
 

@@ -181,4 +181,28 @@ public class LoginController {
         return new ApiResponse("ok", "操作成功");
     }
 
+    // GET /me : get current user info (via X-User-Id header)
+    @GetMapping("/me")
+    public ApiResponse getCurrentUser(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) {
+            return new ApiResponse("error", "用户未登录");
+        }
+        User user = userMapper.getById(userId);
+        if (user != null) {
+            user.setPassword(null);
+            Map<String, Object> data = new java.util.HashMap<>();
+            data.put("user", user);
+            return new ApiResponse("ok", "查询成功", data);
+        }
+        return new ApiResponse("error", "用户不存在");
+    }
+
+    // POST /logout : logout (stateless - just clears client-side token)
+    @PostMapping("/logout")
+    public ApiResponse logout() {
+        // In stateless authentication, logout is handled client-side by clearing the token
+        // This endpoint is provided for consistency
+        return new ApiResponse("ok", "退出成功");
+    }
+
 }
