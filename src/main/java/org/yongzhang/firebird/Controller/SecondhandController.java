@@ -92,13 +92,28 @@ public class SecondhandController {
 
     // POST /items (multipart) - requires X-User-Id header for seller
     @PostMapping(value = "/items", consumes = {"multipart/form-data"})
-    public Item createItem(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                           @RequestHeader(value = "X-User-Username", required = false) String username,
-                           @RequestParam String title,
-                           @RequestParam String description,
-                           @RequestParam double price,
-                           @RequestParam String category,
-                           @RequestParam(required = false) MultipartFile[] images) throws IOException {
+    public Map<String, Object> createItem(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                   @RequestHeader(value = "X-User-Username", required = false) String username,
+                                   @RequestHeader(value = "X-User-Role", required = false) String role,
+                                   @RequestParam String title,
+                                   @RequestParam String description,
+                                   @RequestParam double price,
+                                   @RequestParam String category,
+                                   @RequestParam(required = false) MultipartFile[] images) throws IOException {
+        Map<String, Object> res = new HashMap<>();
+        
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+        
+        if ("admin".equals(role)) {
+            res.put("success", false);
+            res.put("message", "管理员不能发布商品");
+            return res;
+        }
+        
         String id = UUID.randomUUID().toString();
         String date = LocalDateTime.now().format(DTF);
         String thumb = null;
@@ -133,7 +148,9 @@ public class SecondhandController {
         item.setStatus("available");
 
         itemMapper.insert(item);
-        return item;
+        res.put("success", true);
+        res.put("data", item);
+        return res;
     }
 
     // PUT /items/{id}
@@ -198,12 +215,31 @@ public class SecondhandController {
     }
 
     @PostMapping("/cart")
-    public void addToCart(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+    public Map<String, Object> addToCart(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                          @RequestHeader(value = "X-User-Role", required = false) String role,
                           @RequestBody Map<String, Object> payload) {
+        Map<String, Object> res = new HashMap<>();
+        
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+        
+        if ("seller".equals(role)) {
+            res.put("success", false);
+            res.put("message", "商家用户不能购买商品");
+            return res;
+        }
+        
         String itemId = String.valueOf(payload.get("itemId"));
         int quantity = ((Number) payload.getOrDefault("quantity", 1)).intValue();
         Item it = itemMapper.getById(itemId);
-        if (it == null) return;
+        if (it == null) {
+            res.put("success", false);
+            res.put("message", "商品不存在");
+            return res;
+        }
         CartItem existing = null;
         // naive: always insert new cart item
         CartItem ci = new CartItem();
@@ -215,6 +251,8 @@ public class SecondhandController {
         ci.setQuantity(quantity);
         ci.setUserId(userId);
         cartMapper.insert(ci);
+        res.put("success", true);
+        return res;
     }
 
     @PutMapping("/cart/{id}")
