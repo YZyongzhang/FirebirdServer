@@ -12,6 +12,7 @@ public class Item {
     private String sellerName;
     private String date;
     private String category;
+    private String status;
 
     public Item() {}
 
@@ -44,5 +45,8 @@ public class Item {
 
     public String getCategory() { return category; }
     public void setCategory(String category) { this.category = category; }
+
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
 }
 

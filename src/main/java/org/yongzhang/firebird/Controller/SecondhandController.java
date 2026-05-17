@@ -33,6 +33,7 @@ public class SecondhandController {
     private OrderMapper orderMapper;
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final String NGINX_IMAGE_PATH = "D:/nginx-1.24.0/html/images/";
 
     // GET /items
     @GetMapping("/items")
@@ -48,10 +49,45 @@ public class SecondhandController {
         return new ItemsResponse(items, total);
     }
 
+    // GET /items/my - get my published items
+    @GetMapping("/items/my")
+    public List<Item> getMyItems(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new ArrayList<>();
+        return itemMapper.getBySellerId(userId);
+    }
+
     // GET /items/{id}
     @GetMapping("/items/{id}")
     public Item getItem(@PathVariable String id) {
         return itemMapper.getById(id);
+    }
+
+    // PUT /items/{id}/offline - take item offline
+    @PutMapping("/items/{id}/offline")
+    public Map<String, Object> offlineItem(@PathVariable String id,
+                                          @RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                          @RequestHeader(value = "X-User-Role", required = false) String role) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+        Item item = itemMapper.getById(id);
+        if (item == null) {
+            res.put("success", false);
+            res.put("message", "商品不存在");
+            return res;
+        }
+        if (!role.equals("admin") && !item.getSellerId().equals(userId)) {
+            res.put("success", false);
+            res.put("message", "无权限下架此商品");
+            return res;
+        }
+        int updated = itemMapper.offline(id, userId);
+        res.put("success", updated > 0);
+        res.put("message", updated > 0 ? "下架成功" : "下架失败");
+        return res;
     }
 
     // POST /items (multipart) - requires X-User-Id header for seller
@@ -68,16 +104,16 @@ public class SecondhandController {
         String thumb = null;
         List<String> saved = new ArrayList<>();
         if (images != null && images.length > 0) {
-            File uploadDir = new File("src/main/resources/static/uploads");
-            if (!uploadDir.exists()) uploadDir.mkdirs();
+            File nginxDir = new File(NGINX_IMAGE_PATH);
+            if (!nginxDir.exists()) nginxDir.mkdirs();
             for (MultipartFile mf : images) {
                 if (mf.isEmpty()) continue;
                 String fname = UUID.randomUUID().toString() + "_" + mf.getOriginalFilename();
-                File out = new File(uploadDir, fname);
+                File out = new File(nginxDir, fname);
                 try (FileOutputStream fos = new FileOutputStream(out)) {
                     fos.write(mf.getBytes());
                 }
-                String url = "/uploads/" + fname;
+                String url = "http://localhost:80/images/" + fname;
                 saved.add(url);
             }
             if (!saved.isEmpty()) thumb = saved.get(0);
@@ -94,6 +130,7 @@ public class SecondhandController {
         item.setSellerName(username);
         item.setThumb(thumb);
         item.setImages(String.join(",", saved));
+        item.setStatus("available");
 
         itemMapper.insert(item);
         return item;
@@ -115,14 +152,14 @@ public class SecondhandController {
         List<String> saved = new ArrayList<>();
         String thumb = existing.getThumb();
         if (images != null && images.length > 0) {
-            File uploadDir = new File("src/main/resources/static/uploads");
-            if (!uploadDir.exists()) uploadDir.mkdirs();
+            File nginxDir = new File(NGINX_IMAGE_PATH);
+            if (!nginxDir.exists()) nginxDir.mkdirs();
             for (MultipartFile mf : images) {
                 if (mf.isEmpty()) continue;
                 String fname = UUID.randomUUID().toString() + "_" + mf.getOriginalFilename();
-                File out = new File(uploadDir, fname);
+                File out = new File(nginxDir, fname);
                 try (FileOutputStream fos = new FileOutputStream(out)) { fos.write(mf.getBytes()); }
-                String url = "/uploads/" + fname;
+                String url = "http://localhost:80/images/" + fname;
                 saved.add(url);
             }
             if (!saved.isEmpty()) thumb = saved.get(0);
