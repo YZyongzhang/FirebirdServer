@@ -33,7 +33,7 @@ public class SecondhandController {
     private OrderMapper orderMapper;
 
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final String NGINX_IMAGE_PATH = "D:/nginx-1.24.0/html/images/";
+    private static final String NGINX_IMAGE_PATH = "E:/yongzhang/Nginx_server/images/";
 
     // GET /items
     @GetMapping("/items")
