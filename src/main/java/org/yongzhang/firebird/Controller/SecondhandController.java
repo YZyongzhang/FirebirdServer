@@ -330,6 +330,21 @@ public class SecondhandController {
         res.put("message", m);
         return res;
     }
+    
+    // GET /messages/sellers - admin can get all sellers for messaging
+    @GetMapping("/messages/sellers")
+    public Object getSellers(@RequestHeader(value = "X-User-Role", required = false) String role) {
+        Map<String, Object> res = new HashMap<>();
+        if (!"admin".equals(role)) {
+            res.put("success", false);
+            res.put("message", "无权限");
+            return res;
+        }
+        List<User> sellers = userMapper.getSellers();
+        res.put("success", true);
+        res.put("sellers", sellers);
+        return res;
+    }
 
     @GetMapping("/messages/unread-count")
     public UnreadCountResponse getUnreadCount(@RequestHeader(value = "X-User-Id", required = false) Long userId) {

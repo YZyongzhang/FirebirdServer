@@ -34,6 +34,9 @@ public interface UserMapper {
 
     @Select("SELECT * FROM user WHERE role = #{role}")
     List<User> findByRole(String role);
+    
+    @Select("SELECT * FROM user WHERE role = 'seller'")
+    List<User> getSellers();
 
     @Update("UPDATE user SET username = #{username}, role = #{role} WHERE id = #{id}")
     int updateUser(User user);
