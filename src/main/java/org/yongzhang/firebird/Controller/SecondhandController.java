@@ -52,11 +52,25 @@ public class SecondhandController {
         return new ItemsResponse(items, total);
     }
 
+    // GET /categories - get available categories
+    @GetMapping("/categories")
+    public Map<String, List<String>> getCategories() {
+        Map<String, List<String>> result = new HashMap<>();
+        result.put("categories", Arrays.asList("灵感", "思考", "模版", "资源"));
+        return result;
+    }
+
     // GET /items/my - get my published items
     @GetMapping("/items/my")
     public List<Item> getMyItems(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         if (userId == null) return new ArrayList<>();
-        return itemMapper.getBySellerId(userId);
+        List<Item> items = itemMapper.getBySellerId(userId);
+        // 为每个商品加载待发货的订单
+        for (Item item : items) {
+            List<Order> orders = orderMapper.getOrdersByItemId(item.getId(), "paid");
+            item.setOrders(orders);
+        }
+        return items;
     }
 
     // GET /items/{id}
@@ -101,7 +115,7 @@ public class SecondhandController {
                                    @RequestParam String title,
                                    @RequestParam String description,
                                    @RequestParam double price,
-                                   @RequestParam String category,
+                                   @RequestParam(required = false, defaultValue = "灵感") String category,
                                    @RequestParam(required = false) MultipartFile[] images) throws IOException {
         Map<String, Object> res = new HashMap<>();
         
@@ -373,7 +387,26 @@ public class SecondhandController {
         order.setStatus("created");
         order.setDate(LocalDateTime.now().format(DTF));
         orderMapper.insert(order);
-        // naive: no items inserted (would require reading cart items by ids). For demo, just return order id
+        
+        // 从购物车读取商品并插入订单商品表
+        List<CartItem> cartItems = cartMapper.getByUser(userId);
+        for (CartItem item : cartItems) {
+            if (item.getItemId() == null || item.getItemId().isEmpty()) {
+                continue; // 跳过无效的购物车商品
+            }
+            CartItem orderItem = new CartItem();
+            orderItem.setId(UUID.randomUUID().toString());
+            orderItem.setOrderId(orderId);
+            orderItem.setItemId(item.getItemId());
+            orderItem.setTitle(item.getTitle());
+            orderItem.setPrice(item.getPrice());
+            orderItem.setQuantity(item.getQuantity());
+            orderMapper.insertOrderItem(orderItem);
+        }
+        
+        // 清空购物车
+        cartMapper.clear(userId);
+        
         Map<String, Object> res = new HashMap<>();
         res.put("orderId", orderId);
         res.put("status", "created");
@@ -397,6 +430,43 @@ public class SecondhandController {
     public void cancelOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
                             @PathVariable String orderId) {
         orderMapper.updateStatus(orderId, userId, "cancelled");
+    }
+
+    @PutMapping("/orders/{orderId}/ship")
+    public Map<String, Object> shipOrder(@PathVariable String orderId,
+                                         @RequestBody Map<String, Object> payload) {
+        String trackingNumber = String.valueOf(payload.getOrDefault("trackingNumber", ""));
+        orderMapper.updateOrderStatus(orderId, "shipped", trackingNumber);
+        Map<String, Object> r = new HashMap<>();
+        r.put("success", true);
+        r.put("orderId", orderId);
+        r.put("status", "shipped");
+        r.put("trackingNumber", trackingNumber);
+        return r;
+    }
+
+    // 获取商家的所有订单（管理员查看）
+    @GetMapping("/orders/seller/{sellerId}")
+    public List<Order> getOrdersBySeller(@PathVariable Long sellerId) {
+        return orderMapper.getOrdersBySellerId(sellerId);
+    }
+
+    @PutMapping("/orders/{orderId}/confirm")
+    public void confirmOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                             @PathVariable String orderId) {
+        orderMapper.updateStatus(orderId, userId, "completed");
+    }
+
+    @PutMapping("/orders/{orderId}/return")
+    public Map<String, Object> returnOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                           @PathVariable String orderId,
+                                           @RequestBody Map<String, Object> payload) {
+        String reason = String.valueOf(payload.getOrDefault("reason", ""));
+        orderMapper.updateStatus(orderId, userId, "cancelled");
+        Map<String, Object> r = new HashMap<>();
+        r.put("success", true);
+        r.put("message", "退货申请已提交，原因：" + reason);
+        return r;
     }
 
     // Reviews

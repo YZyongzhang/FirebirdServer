@@ -2,6 +2,7 @@ package org.yongzhang.firebird.Data;
 
 public class CartItem {
     private String id;
+    private String orderId;
     private String itemId;
     private String title;
     private double price;
@@ -13,6 +14,9 @@ public class CartItem {
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
+
+    public String getOrderId() { return orderId; }
+    public void setOrderId(String orderId) { this.orderId = orderId; }
 
     public String getItemId() { return itemId; }
     public void setItemId(String itemId) { this.itemId = itemId; }

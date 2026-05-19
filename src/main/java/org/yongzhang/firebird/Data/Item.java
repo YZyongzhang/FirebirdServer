@@ -1,5 +1,7 @@
 package org.yongzhang.firebird.Data;
 
+import java.util.List;
+
 public class Item {
     private String id;
     private String title;
@@ -13,6 +15,7 @@ public class Item {
     private String date;
     private String category;
     private String status;
+    private List<Order> orders;  // 添加订单列表
 
     public Item() {}
 
@@ -48,5 +51,8 @@ public class Item {
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+
+    public List<Order> getOrders() { return orders; }
+    public void setOrders(List<Order> orders) { this.orders = orders; }
 }
 

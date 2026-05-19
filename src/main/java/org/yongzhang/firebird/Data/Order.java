@@ -9,6 +9,11 @@ public class Order {
     private String status;
     private String date;
     private Long userId;
+    private String payTime;
+    private String shipTime;
+    private String deliverTime;
+    private String trackingNumber;
+    private String shippingAddress;
 
     public Order() {}
 
@@ -29,5 +34,19 @@ public class Order {
 
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
-}
 
+    public String getPayTime() { return payTime; }
+    public void setPayTime(String payTime) { this.payTime = payTime; }
+
+    public String getShipTime() { return shipTime; }
+    public void setShipTime(String shipTime) { this.shipTime = shipTime; }
+
+    public String getDeliverTime() { return deliverTime; }
+    public void setDeliverTime(String deliverTime) { this.deliverTime = deliverTime; }
+
+    public String getTrackingNumber() { return trackingNumber; }
+    public void setTrackingNumber(String trackingNumber) { this.trackingNumber = trackingNumber; }
+
+    public String getShippingAddress() { return shippingAddress; }
+    public void setShippingAddress(String shippingAddress) { this.shippingAddress = shippingAddress; }
+}
