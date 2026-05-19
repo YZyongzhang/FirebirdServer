@@ -18,6 +18,9 @@ public interface MessageMapper {
     @Select("SELECT COUNT(1) FROM messages WHERE to_user_id = #{userId} AND is_read = 0")
     int countUnread(@Param("userId") Long userId);
 
+    @Select("SELECT id, from_user_id as fromUserId, from_username as fromUsername, to_user_id as toUserId, content, date, item_id as itemId, item_title as itemTitle, is_read as isRead FROM messages WHERE from_user_id = #{userId} OR to_user_id = #{userId} ORDER BY date DESC")
+    List<Message> getByUser(@Param("userId") Long userId);
+
     @Update("UPDATE messages SET is_read = 1 WHERE to_user_id = #{userId} AND from_user_id = #{fromUserId} AND item_id = #{itemId}")
     int markAsRead(@Param("userId") Long userId, @Param("fromUserId") Long fromUserId, @Param("itemId") String itemId);
 

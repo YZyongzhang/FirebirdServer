@@ -302,18 +302,21 @@ public class SecondhandController {
     }
 
     @PutMapping("/cart/{id}")
-    public Map<String, Object> updateCartItem(@PathVariable String id, @RequestBody Map<String, Object> body) {
+    public Map<String, Object> updateCartItem(@PathVariable String id,
+                                              @RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                              @RequestBody Map<String, Object> body) {
         Map<String, Object> res = new HashMap<>();
         int quantity = body.get("quantity") != null ? Integer.parseInt(body.get("quantity").toString()) : 1;
-        cartMapper.updateQuantity(id, quantity);
+        cartMapper.updateQuantity(id, userId, quantity);
         res.put("success", true);
         return res;
     }
 
     @DeleteMapping("/cart/{id}")
-    public Map<String, Object> removeFromCart(@PathVariable String id) {
+    public Map<String, Object> removeFromCart(@PathVariable String id,
+                                              @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Map<String, Object> res = new HashMap<>();
-        cartMapper.delete(id);
+        cartMapper.delete(id, userId);
         res.put("success", true);
         res.put("message", "移除成功");
         return res;
@@ -327,7 +330,7 @@ public class SecondhandController {
             res.put("message", "未登录");
             return res;
         }
-        cartMapper.clearByUser(userId);
+        cartMapper.clear(userId);
         res.put("success", true);
         res.put("message", "清空购物车成功");
         return res;
@@ -366,7 +369,12 @@ public class SecondhandController {
         order.setTotalAmount(request.getTotalAmount());
         order.setStatus("pending");
         order.setDate(date);
-        order.setShippingAddress(request.getShippingAddress());
+        // shippingAddress available in CreateOrderRequest? if provided, use it
+        try {
+            order.setShippingAddress(request.getShippingAddress());
+        } catch (Throwable ignored) {
+            // ignore if not provided
+        }
 
         orderMapper.insert(order);
 
@@ -375,7 +383,7 @@ public class SecondhandController {
             orderMapper.insertOrderItem(item);
         }
 
-        cartMapper.clearByUser(userId);
+        cartMapper.clear(userId);
 
         res.put("success", true);
         res.put("orderId", orderId);
@@ -566,10 +574,18 @@ public class SecondhandController {
     }
 
     @GetMapping("/messages/conversations")
-    public MessagesResponse getConversations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        if (userId == null) return new MessagesResponse(new ArrayList<>());
-        List<Message> conversations = messageMapper.getConversations(userId);
-        return new MessagesResponse(conversations);
+    public Object getConversations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) {
+            Map<String, Object> res = new HashMap<>();
+            res.put("conversations", new ArrayList<>());
+            res.put("status", "ok");
+            return res;
+        }
+        List<Map<String, Object>> conversations = messageMapper.getConversations(userId);
+        Map<String, Object> res = new HashMap<>();
+        res.put("conversations", conversations);
+        res.put("status", "ok");
+        return res;
     }
 
     @GetMapping("/messages/{withUserId}")
