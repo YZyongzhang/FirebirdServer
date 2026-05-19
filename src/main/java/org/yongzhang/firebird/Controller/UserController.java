@@ -5,6 +5,8 @@ import org.springframework.web.bind.annotation.*;
 import org.yongzhang.firebird.Data.ApiResponse;
 import org.yongzhang.firebird.Data.User;
 import org.yongzhang.firebird.Mapper.UserMapper;
+import org.yongzhang.firebird.Mapper.OrderMapper;
+import org.yongzhang.firebird.Mapper.ItemMapper;
 
 import java.util.HashMap;
 import java.util.List;
@@ -16,6 +18,12 @@ public class UserController {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private OrderMapper orderMapper;
+
+    @Autowired
+    private ItemMapper itemMapper;
 
     @GetMapping
     public ApiResponse getUsers(
@@ -261,5 +269,92 @@ public class UserController {
         } else {
             return new ApiResponse("error", "删除失败");
         }
+    }
+
+    @PostMapping("/{id}/ban")
+    public ApiResponse banUser(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!"admin".equals(role)) {
+            return new ApiResponse("error", "无权限");
+        }
+
+        User user = userMapper.findById(id);
+        if (user == null) {
+            return new ApiResponse("error", "用户不存在");
+        }
+
+        if ("admin".equals(user.getRole())) {
+            return new ApiResponse("error", "无法封禁管理员账号");
+        }
+
+        userMapper.updateBanned(id, true);
+        return new ApiResponse("ok", "用户已封禁");
+    }
+
+    @PostMapping("/{id}/unban")
+    public ApiResponse unbanUser(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!"admin".equals(role)) {
+            return new ApiResponse("error", "无权限");
+        }
+
+        User user = userMapper.findById(id);
+        if (user == null) {
+            return new ApiResponse("error", "用户不存在");
+        }
+
+        userMapper.updateBanned(id, false);
+        return new ApiResponse("ok", "用户已解封");
+    }
+
+    @GetMapping("/sellers/{id}/credit")
+    public ApiResponse getSellerCredit(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (role == null && userId == null) {
+            return new ApiResponse("error", "无权限");
+        }
+
+        User seller = userMapper.findById(id);
+        if (seller == null || !"seller".equals(seller.getRole())) {
+            return new ApiResponse("error", "商家不存在");
+        }
+
+        Integer creditScore = seller.getCreditScore();
+        if (creditScore == null) {
+            creditScore = 100;
+            userMapper.updateCreditScore(id, creditScore);
+        }
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("creditScore", creditScore);
+        return new ApiResponse("ok", null, data);
+    }
+
+    @GetMapping("/sellers/{id}/statistics")
+    public ApiResponse getSellerStatistics(
+            @PathVariable Long id,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (role == null && userId == null) {
+            return new ApiResponse("error", "无权限");
+        }
+
+        User seller = userMapper.findById(id);
+        if (seller == null || !"seller".equals(seller.getRole())) {
+            return new ApiResponse("error", "商家不存在");
+        }
+
+        List<Map<String, Object>> statistics = userMapper.getSellerStatistics(id);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("sellerId", id);
+        result.put("username", seller.getUsername());
+        result.put("statistics", statistics);
+
+        return new ApiResponse("ok", null, result);
     }
 }

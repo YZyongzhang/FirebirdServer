@@ -27,23 +27,50 @@ public class LoginController {
     private final Map<String, String> smsCodes = new ConcurrentHashMap<>();
     private final Map<String, Long> smsExpiry = new ConcurrentHashMap<>();
     private final Map<String, String> qrSessions = new ConcurrentHashMap<>();
+    private final Map<String, String[]> captchas = new ConcurrentHashMap<>();
 
     @PostMapping("/login")
     public ApiResponse login(@RequestBody LoginData loginData) {
         String username = loginData.getUsername();
         String password = loginData.getPassword();
+        String captchaToken = loginData.getCaptchaToken();
+        String captchaInput = loginData.getCaptchaInput();
+
+        if (captchaToken == null || captchaInput == null) {
+            return new ApiResponse("error", "请输入人机验证码");
+        }
+
+        String[] captchaData = captchas.get(captchaToken);
+        if (captchaData == null) {
+            return new ApiResponse("error", "验证码已过期，请刷新重试");
+        }
+
+        long now = Instant.now().toEpochMilli();
+        if (now > Long.parseLong(captchaData[2])) {
+            captchas.remove(captchaToken);
+            return new ApiResponse("error", "验证码已过期，请刷新重试");
+        }
+
+        if (!captchaInput.trim().equalsIgnoreCase(captchaData[0])) {
+            return new ApiResponse("error", "验证码错误");
+        }
+        captchas.remove(captchaToken);
 
         User user = userMapper.login(username, password);
 
         if (user != null) {
-            System.out.println("[DEBUG] User found: " + user.getUsername() + ", role: " + user.getRole() + ", status: " + user.getStatus());
-            
-            // 检查商家审核状态
+            System.out.println("[DEBUG] User found: " + user.getUsername() + ", role: " + user.getRole() + ", status: " + user.getStatus() + ", banned: " + user.getBanned());
+
+            if (user.getBanned() != null && user.getBanned()) {
+                System.out.println("[DEBUG] User login blocked: user is banned");
+                return new ApiResponse("error", "账号已被封禁，请联系管理员");
+            }
+
             if ("seller".equals(user.getRole()) && "pending".equals(user.getStatus())) {
                 System.out.println("[DEBUG] Seller login blocked: status is pending");
                 return new ApiResponse("error", "商家审核中，请等待管理员审核通过");
             }
-            
+
             user.setPassword(null);
             java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("id", user.getId());
@@ -54,6 +81,26 @@ public class LoginController {
         } else {
             return new ApiResponse("error", "用户名或密码错误");
         }
+    }
+
+    @GetMapping("/captcha")
+    public ApiResponse getCaptcha() {
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+        StringBuilder captchaText = new StringBuilder();
+        java.util.Random random = new java.util.Random();
+        for (int i = 0; i < 5; i++) {
+            captchaText.append(chars.charAt(random.nextInt(chars.length())));
+        }
+        String answer = captchaText.toString().toLowerCase();
+
+        String token = UUID.randomUUID().toString();
+        long expiry = Instant.now().plusSeconds(300).toEpochMilli();
+        captchas.put(token, new String[]{answer, captchaText.toString(), String.valueOf(expiry)});
+
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("token", token);
+        data.put("captcha", captchaText.toString());
+        return new ApiResponse("ok", null, data);
     }
 
     @PostMapping("/register")
@@ -79,6 +126,7 @@ public class LoginController {
         }
         newUser.setBalance(0.0);
         newUser.setStatus("approved");
+        System.out.println("[DEBUG] User " + newUser.getRole() + newUser.getStatus()+" created successfully");
         int rows = userMapper.insertUser(newUser);
         if (rows > 0) {
             return new ApiResponse("ok", "注册成功");

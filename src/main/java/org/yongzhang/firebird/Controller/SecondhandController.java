@@ -137,6 +137,7 @@ public class SecondhandController {
     }
 
     @PostMapping(value = "/items", consumes = {"multipart/form-data"})
+    // multipart/form-data 可以传表单，里面可以是混合数据
     public Map<String, Object> createItem(@RequestHeader(value = "X-User-Id", required = false) Long userId,
                                    @RequestHeader(value = "X-User-Username", required = false) String username,
                                    @RequestHeader(value = "X-User-Role", required = false) String role,
@@ -260,7 +261,7 @@ public class SecondhandController {
     @GetMapping("/categories")
     public Map<String, List<String>> getCategories() {
         Map<String, List<String>> result = new HashMap<>();
-        result.put("categories", Arrays.asList("灵感", "思考", "模版", "资源"));
+        result.put("categories", Arrays.asList("灵感", "思考", "模版", "资源")); // 将categories字段改为一个固定的列表，前端可以直接使用这个列表来展示分类选项
         return result;
     }
 
@@ -617,8 +618,15 @@ public class SecondhandController {
         String refundTime = LocalDateTime.now().format(DTF);
         orderMapper.processRefund(orderId, "cancelled", "refunded", refundTime);
 
+        Integer currentScore = userMapper.getCreditScore(sellerId);
+        if (currentScore == null) {
+            currentScore = 100;
+        }
+        int newScore = Math.max(0, currentScore - 1);
+        userMapper.updateCreditScore(sellerId, newScore);
+
         res.put("success", true);
-        res.put("message", "退货已通过，款项已退回买家账户");
+        res.put("message", "退货已通过，款项已退回买家账户，商家信用分-1");
         return res;
     }
 

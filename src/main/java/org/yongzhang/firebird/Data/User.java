@@ -13,6 +13,8 @@ public class User {
     private String description;
     private String status;
     private Double balance;
+    private Integer creditScore;
+    private Boolean banned;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -46,4 +48,10 @@ public class User {
 
     public Double getBalance() { return balance; }
     public void setBalance(Double balance) { this.balance = balance; }
+
+    public Integer getCreditScore() { return creditScore; }
+    public void setCreditScore(Integer creditScore) { this.creditScore = creditScore; }
+
+    public Boolean getBanned() { return banned; }
+    public void setBanned(Boolean banned) { this.banned = banned; }
 }

@@ -52,3 +52,9 @@ CREATE TABLE IF NOT EXISTS refund_records (
   INDEX idx_order (order_id),
   INDEX idx_user (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 9. 为user表添加封禁字段（管理员封禁用户功能）
+ALTER TABLE user ADD COLUMN banned TINYINT(1) DEFAULT 0;
+
+-- 10. 为user表添加信用分数字段（商家信用体系，默认100分）
+ALTER TABLE user ADD COLUMN credit_score INT DEFAULT 100;
