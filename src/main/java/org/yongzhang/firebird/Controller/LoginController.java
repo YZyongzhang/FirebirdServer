@@ -36,6 +36,14 @@ public class LoginController {
         User user = userMapper.login(username, password);
 
         if (user != null) {
+            System.out.println("[DEBUG] User found: " + user.getUsername() + ", role: " + user.getRole() + ", status: " + user.getStatus());
+            
+            // 检查商家审核状态
+            if ("seller".equals(user.getRole()) && "pending".equals(user.getStatus())) {
+                System.out.println("[DEBUG] Seller login blocked: status is pending");
+                return new ApiResponse("error", "商家审核中，请等待管理员审核通过");
+            }
+            
             user.setPassword(null);
             java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("id", user.getId());

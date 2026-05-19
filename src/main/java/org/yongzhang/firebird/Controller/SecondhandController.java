@@ -203,11 +203,11 @@ public class SecondhandController {
         item.setSellerName(username);
         item.setThumb(thumb);
         item.setImages(String.join(",", saved));
-        item.setStatus("pending_review");
+        item.setStatus("available");
 
         itemMapper.insert(item);
         res.put("success", true);
-        res.put("message", "商品发布成功，等待平台审核");
+        res.put("message", "商品发布成功");
         res.put("data", item);
         return res;
     }
@@ -499,6 +499,8 @@ public class SecondhandController {
                                            @RequestBody Map<String, String> body,
                                            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Map<String, Object> res = new HashMap<>();
+        System.out.println("DEBUG: applyRefund called for orderId: " + orderId + ", userId: " + userId);
+        
         if (userId == null) {
             res.put("success", false);
             res.put("message", "未登录");
@@ -506,15 +508,20 @@ public class SecondhandController {
         }
 
         String reason = body.get("reason");
+        System.out.println("DEBUG: Refund reason: " + reason);
+        
         Order order = orderMapper.getByOrderId(orderId);
         if (order == null) {
             res.put("success", false);
             res.put("message", "订单不存在");
             return res;
         }
+        
+        System.out.println("DEBUG: Order found, userId: " + order.getUserId() + ", totalAmount: " + order.getTotalAmount());
 
         String refundTime = LocalDateTime.now().format(DTF);
-        orderMapper.updateRefundStatus(orderId, "pending", reason, refundTime);
+        int rowsUpdated = orderMapper.updateRefundStatus(orderId, "pending", reason, refundTime);
+        System.out.println("DEBUG: updateRefundStatus affected rows: " + rowsUpdated);
 
         res.put("success", true);
         res.put("message", "退款申请已提交");
@@ -551,7 +558,7 @@ public class SecondhandController {
             res.put("success", true);
             res.put("message", "退款已处理，款项已退回买家账户");
         } else {
-            orderMapper.updateRefundStatus(orderId, "rejected", order.getRefundReason(), refundTime);
+            orderMapper.updateRefundStatus(orderId, "rejected", order.getReturnReason(), refundTime);
 
             res.put("success", true);
             res.put("message", "退款申请已拒绝");
@@ -564,6 +571,90 @@ public class SecondhandController {
     public List<Order> getPendingRefunds(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         if (userId == null) return new ArrayList<>();
         return orderMapper.getPendingRefundsBySellerId(userId);
+    }
+
+    @GetMapping("/orders/returns")
+    public List<Order> getAllReturns() {
+        return orderMapper.getAllRefunds();
+    }
+
+    @GetMapping("/orders/returns/seller/{sellerId}")
+    public List<Order> getReturnsBySeller(@PathVariable Long sellerId) {
+        System.out.println("DEBUG: getReturnsBySeller called with sellerId: " + sellerId);
+        List<Order> orders = orderMapper.getPendingRefundsBySellerId(sellerId);
+        System.out.println("DEBUG: Returning " + orders.size() + " pending refund orders for seller " + sellerId);
+        return orders;
+    }
+
+    @PostMapping("/orders/{orderId}/return/approve")
+    public Map<String, Object> approveReturn(@PathVariable String orderId,
+                                              @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        Long sellerId = orderMapper.getSellerIdByOrderId(orderId);
+        if (sellerId == null || !sellerId.equals(userId)) {
+            res.put("success", false);
+            res.put("message", "无权限审核此退货");
+            return res;
+        }
+
+        User buyer = userMapper.getById(order.getUserId());
+        double newBalance = (buyer.getBalance() != null ? buyer.getBalance() : 0.0) + order.getTotalAmount();
+        userMapper.updateBalance(order.getUserId(), newBalance);
+
+        String refundTime = LocalDateTime.now().format(DTF);
+        orderMapper.processRefund(orderId, "cancelled", "refunded", refundTime);
+
+        res.put("success", true);
+        res.put("message", "退货已通过，款项已退回买家账户");
+        return res;
+    }
+
+    @PostMapping("/orders/{orderId}/return/reject")
+    public Map<String, Object> rejectReturn(@PathVariable String orderId,
+                                             @RequestBody Map<String, String> body,
+                                             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        String reason = body.get("reason");
+
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        Long sellerId = orderMapper.getSellerIdByOrderId(orderId);
+        if (sellerId == null || !sellerId.equals(userId)) {
+            res.put("success", false);
+            res.put("message", "无权限审核此退货");
+            return res;
+        }
+
+        String refundTime = LocalDateTime.now().format(DTF);
+        orderMapper.updateRefundStatus(orderId, "rejected", reason != null ? reason : order.getReturnReason(), refundTime);
+
+        res.put("success", true);
+        res.put("message", "退货申请已拒绝");
+        return res;
     }
 
     @GetMapping("/messages")
@@ -586,6 +677,15 @@ public class SecondhandController {
         res.put("conversations", conversations);
         res.put("status", "ok");
         return res;
+    }
+
+    @GetMapping("/messages/conversation")
+    public MessagesResponse getConversationByParams(@RequestParam Long withUserId,
+                                                   @RequestParam(required = false) String itemId,
+                                                   @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new MessagesResponse(new ArrayList<>());
+        List<Message> messages = messageMapper.getConversation(userId, withUserId, itemId);
+        return new MessagesResponse(messages);
     }
 
     @GetMapping("/messages/{withUserId}")
@@ -630,7 +730,7 @@ public class SecondhandController {
         return res;
     }
 
-    @GetMapping("/reviews/item/{itemId}")
+    @GetMapping("/items/{itemId}/reviews")
     public ReviewsResponse getItemReviews(@PathVariable String itemId) {
         List<Review> reviews = reviewMapper.getByItem(itemId);
         return new ReviewsResponse(reviews);

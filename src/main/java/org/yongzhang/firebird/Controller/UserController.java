@@ -113,9 +113,15 @@ public class UserController {
     @GetMapping("/sellers/{id}")
     public ApiResponse getSellerById(
             @PathVariable Long id,
-            @RequestHeader(value = "X-User-Role", required = false) String role) {
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         if (!"admin".equals(role)) {
-            return new ApiResponse("error", "无权限");
+            if (!"seller".equals(role)) {
+                return new ApiResponse("error", "无权限");
+            }
+            if (!id.equals(userId)) {
+                return new ApiResponse("error", "无权限访问其他商家信息");
+            }
         }
 
         User seller = userMapper.findById(id);
