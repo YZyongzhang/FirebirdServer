@@ -1,6 +1,7 @@
 package org.yongzhang.firebird.Mapper;
 
 import org.apache.ibatis.annotations.*;
+import org.apache.ibatis.annotations.Param;
 import org.yongzhang.firebird.Data.Item;
 import java.util.List;
 
@@ -32,6 +33,10 @@ public interface ItemMapper {
     @ResultMap("ItemResult")
     List<Item> getBySellerId(Long sellerId);
 
+    @Select("SELECT id, title, price, thumb, images, description, seller_id, seller_name, date, category, status FROM items WHERE status = #{status} ORDER BY date DESC")
+    @ResultMap("ItemResult")
+    List<Item> getByStatus(@Param("status") String status);
+
     @Update("UPDATE items SET status = #{status} WHERE id = #{id}")
     int updateStatus(@Param("id") String id, @Param("status") String status);
 
@@ -39,16 +44,15 @@ public interface ItemMapper {
     int offline(@Param("id") String id, @Param("sellerId") Long sellerId);
 
     @Insert("INSERT INTO items(id, title, price, thumb, images, description, seller_id, seller_name, date, category, status) "
-            + "VALUES(#{id}, #{title}, #{price}, #{thumb}, #{images}, #{description}, #{sellerId}, #{sellerName}, #{date}, #{category}, 'available')")
+            + "VALUES(#{id}, #{title}, #{price}, #{thumb}, #{images}, #{description}, #{sellerId}, #{sellerName}, #{date}, #{category}, #{status})")
     int insert(Item item);
 
-    @Update("UPDATE items SET title = #{title}, price = #{price}, thumb = #{thumb}, images = #{images}, description = #{description}, category = #{category} WHERE id = #{id} AND seller_id = #{sellerId}")
+    @Update("UPDATE items SET title = #{title}, price = #{price}, thumb = #{thumb}, images = #{images}, description = #{description}, category = #{category}, status = #{status} WHERE id = #{id} AND seller_id = #{sellerId}")
     int update(Item item);
 
     @Delete("DELETE FROM items WHERE id = #{id} AND seller_id = #{sellerId}")
     int delete(@Param("id") String id, @Param("sellerId") Long sellerId);
 
-    @Select("SELECT DISTINCT category FROM items")
+    @Select("SELECT DISTINCT category FROM items WHERE category IS NOT NULL AND category != ''")
     List<String> categories();
 }
-

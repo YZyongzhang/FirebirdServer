@@ -24,12 +24,10 @@ public class LoginController {
     @Autowired
     private UserMapper userMapper;
 
-    // Simple in-memory stores for demo purposes
-    private final Map<String, String> smsCodes = new ConcurrentHashMap<>(); // phone -> code
-    private final Map<String, Long> smsExpiry = new ConcurrentHashMap<>(); // phone -> expiryEpochMillis
-    private final Map<String, String> qrSessions = new ConcurrentHashMap<>(); // sessionId -> status (waiting/scanned/confirmed)
+    private final Map<String, String> smsCodes = new ConcurrentHashMap<>();
+    private final Map<String, Long> smsExpiry = new ConcurrentHashMap<>();
+    private final Map<String, String> qrSessions = new ConcurrentHashMap<>();
 
-    // POST /login : username/password login
     @PostMapping("/login")
     public ApiResponse login(@RequestBody LoginData loginData) {
         String username = loginData.getUsername();
@@ -38,7 +36,6 @@ public class LoginController {
         User user = userMapper.login(username, password);
 
         if (user != null) {
-            // Do not return the password to the client
             user.setPassword(null);
             java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("id", user.getId());
@@ -51,7 +48,6 @@ public class LoginController {
         }
     }
 
-    // POST /register : create new user
     @PostMapping("/register")
     public ApiResponse register(@RequestBody RegisterData data) {
         if (data.getUsername() == null || data.getUsername().trim().isEmpty()
@@ -73,6 +69,8 @@ public class LoginController {
         } else {
             newUser.setRole("user");
         }
+        newUser.setBalance(0.0);
+        newUser.setStatus("approved");
         int rows = userMapper.insertUser(newUser);
         if (rows > 0) {
             return new ApiResponse("ok", "注册成功");
@@ -81,7 +79,6 @@ public class LoginController {
         }
     }
 
-    // POST /send-sms : send SMS verification code (demo - stores code in memory)
     @PostMapping("/send-sms")
     public ApiResponse sendSms(@RequestBody SmsRequest req) {
         String phone = req.getPhone();
@@ -89,19 +86,16 @@ public class LoginController {
             return new ApiResponse("error", "手机号不能为空");
         }
 
-        // generate 6-digit code
         String code = String.format("%06d", (int) (Math.random() * 1000000));
         smsCodes.put(phone, code);
-        long expiry = Instant.now().plusSeconds(5 * 60).toEpochMilli(); // 5 minutes
+        long expiry = Instant.now().plusSeconds(5 * 60).toEpochMilli();
         smsExpiry.put(phone, expiry);
 
-        // In production, integrate with real SMS provider. Here we just log code for demo.
         System.out.println("[DEBUG] SMS code for " + phone + " = " + code);
 
         return new ApiResponse("ok", "验证码已发送");
     }
 
-    // POST /login/sms : login with phone + code
     @PostMapping("/login/sms")
     public ApiResponse loginSms(@RequestBody SmsLoginData data) {
         String phone = data.getPhone();
@@ -122,20 +116,15 @@ public class LoginController {
             return new ApiResponse("error", "验证码错误");
         }
 
-        // Optionally, create or find a user associated with this phone.
-        // For demo we just return success.
-        // Remove used code
         smsCodes.remove(phone);
         smsExpiry.remove(phone);
 
         return new ApiResponse("ok", "登录成功");
     }
 
-    // GET /login/qr : generate QR image stream (PNG) that encodes a login URL with sessionId
     @GetMapping(value = "/login/qr", produces = MediaType.IMAGE_PNG_VALUE)
     public ResponseEntity<byte[]> getQr() {
         String sessionId = UUID.randomUUID().toString();
-        // content encoded in QR (frontend or mobile app should parse this and call scan/confirm)
         String qrContent = "firebird://login?sessionId=" + sessionId;
 
         try {
@@ -159,7 +148,6 @@ public class LoginController {
         }
     }
 
-    // GET /login/qr/status?sessionId=... : check QR session status (waiting/scanned/confirmed)
     @GetMapping("/login/qr/status")
     public ApiResponse qrStatus(@RequestParam String sessionId) {
         String status = qrSessions.get(sessionId);
@@ -171,7 +159,6 @@ public class LoginController {
         return new ApiResponse("ok", "查询成功", data);
     }
 
-    // For demo: a simple endpoint to simulate scanning/confirming the QR code
     @PostMapping("/login/qr/simulate")
     public ApiResponse simulateQr(@RequestParam String sessionId, @RequestParam String action) {
         if (!qrSessions.containsKey(sessionId)) return new ApiResponse("error", "会话不存在");
@@ -181,7 +168,6 @@ public class LoginController {
         return new ApiResponse("ok", "操作成功");
     }
 
-    // GET /me : get current user info (via X-User-Id header)
     @GetMapping("/me")
     public ApiResponse getCurrentUser(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         if (userId == null) {
@@ -197,12 +183,49 @@ public class LoginController {
         return new ApiResponse("error", "用户不存在");
     }
 
-    // POST /logout : logout (stateless - just clears client-side token)
     @PostMapping("/logout")
     public ApiResponse logout() {
-        // In stateless authentication, logout is handled client-side by clearing the token
-        // This endpoint is provided for consistency
         return new ApiResponse("ok", "退出成功");
     }
 
+    @PostMapping("/recharge")
+    public ApiResponse recharge(@RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                @RequestBody Map<String, Object> request) {
+        if (userId == null) {
+            return new ApiResponse("error", "用户未登录");
+        }
+
+        Double amount = request.get("amount") != null ? Double.parseDouble(request.get("amount").toString()) : 0.0;
+        if (amount <= 0) {
+            return new ApiResponse("error", "充值金额必须大于0");
+        }
+
+        User user = userMapper.getById(userId);
+        if (user == null) {
+            return new ApiResponse("error", "用户不存在");
+        }
+
+        Double newBalance = (user.getBalance() != null ? user.getBalance() : 0.0) + amount;
+        userMapper.updateBalance(userId, newBalance);
+
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("balance", newBalance);
+        return new ApiResponse("ok", "充值成功", data);
+    }
+
+    @GetMapping("/balance")
+    public ApiResponse getBalance(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) {
+            return new ApiResponse("error", "用户未登录");
+        }
+
+        User user = userMapper.getById(userId);
+        if (user == null) {
+            return new ApiResponse("error", "用户不存在");
+        }
+
+        Map<String, Object> data = new java.util.HashMap<>();
+        data.put("balance", user.getBalance() != null ? user.getBalance() : 0.0);
+        return new ApiResponse("ok", "查询成功", data);
+    }
 }

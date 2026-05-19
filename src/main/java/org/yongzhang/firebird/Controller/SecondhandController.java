@@ -38,7 +38,6 @@ public class SecondhandController {
     private static final DateTimeFormatter DTF = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final String NGINX_IMAGE_PATH = "E:/yongzhang/Nginx_server/images/";
 
-    // GET /items
     @GetMapping("/items")
     public ItemsResponse getItems(@RequestParam(required = false) Integer page,
                                   @RequestParam(required = false) Integer size,
@@ -52,20 +51,52 @@ public class SecondhandController {
         return new ItemsResponse(items, total);
     }
 
-    // GET /categories - get available categories
-    @GetMapping("/categories")
-    public Map<String, List<String>> getCategories() {
-        Map<String, List<String>> result = new HashMap<>();
-        result.put("categories", Arrays.asList("灵感", "思考", "模版", "资源"));
-        return result;
+    @GetMapping("/items/pending")
+    public List<Item> getPendingItems(@RequestHeader(value = "X-User-Role", required = false) String role) {
+        if (!"admin".equals(role)) {
+            return new ArrayList<>();
+        }
+        List<Item> items = itemMapper.getByStatus("pending_review");
+        return items != null ? items : new ArrayList<>();
     }
 
-    // GET /items/my - get my published items
+    @PostMapping("/items/{id}/review")
+    public Map<String, Object> reviewItem(@PathVariable String id,
+                                          @RequestBody Map<String, String> body,
+                                          @RequestHeader(value = "X-User-Role", required = false) String role) {
+        Map<String, Object> res = new HashMap<>();
+        if (!"admin".equals(role)) {
+            res.put("success", false);
+            res.put("message", "无权限");
+            return res;
+        }
+
+        String action = body.get("action");
+        if (action == null || (!action.equals("approve") && !action.equals("reject"))) {
+            res.put("success", false);
+            res.put("message", "无效的操作");
+            return res;
+        }
+
+        Item item = itemMapper.getById(id);
+        if (item == null) {
+            res.put("success", false);
+            res.put("message", "商品不存在");
+            return res;
+        }
+
+        String newStatus = "approve".equals(action) ? "available" : "rejected";
+        itemMapper.updateStatus(id, newStatus);
+
+        res.put("success", true);
+        res.put("message", "商品审核" + ("available".equals(newStatus) ? "通过" : "拒绝"));
+        return res;
+    }
+
     @GetMapping("/items/my")
     public List<Item> getMyItems(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         if (userId == null) return new ArrayList<>();
         List<Item> items = itemMapper.getBySellerId(userId);
-        // 为每个商品加载待发货的订单
         for (Item item : items) {
             List<Order> orders = orderMapper.getOrdersByItemId(item.getId(), "paid");
             item.setOrders(orders);
@@ -73,13 +104,11 @@ public class SecondhandController {
         return items;
     }
 
-    // GET /items/{id}
     @GetMapping("/items/{id}")
     public Item getItem(@PathVariable String id) {
         return itemMapper.getById(id);
     }
 
-    // PUT /items/{id}/offline - take item offline
     @PutMapping("/items/{id}/offline")
     public Map<String, Object> offlineItem(@PathVariable String id,
                                           @RequestHeader(value = "X-User-Id", required = false) Long userId,
@@ -107,7 +136,6 @@ public class SecondhandController {
         return res;
     }
 
-    // POST /items (multipart) - requires X-User-Id header for seller
     @PostMapping(value = "/items", consumes = {"multipart/form-data"})
     public Map<String, Object> createItem(@RequestHeader(value = "X-User-Id", required = false) Long userId,
                                    @RequestHeader(value = "X-User-Username", required = false) String username,
@@ -118,19 +146,32 @@ public class SecondhandController {
                                    @RequestParam(required = false, defaultValue = "灵感") String category,
                                    @RequestParam(required = false) MultipartFile[] images) throws IOException {
         Map<String, Object> res = new HashMap<>();
-        
+
         if (userId == null) {
             res.put("success", false);
             res.put("message", "未登录");
             return res;
         }
-        
+
         if ("admin".equals(role)) {
             res.put("success", false);
             res.put("message", "管理员不能发布商品");
             return res;
         }
-        
+
+        User seller = userMapper.getById(userId);
+        if (seller == null) {
+            res.put("success", false);
+            res.put("message", "用户不存在");
+            return res;
+        }
+
+        if (!"approved".equals(seller.getStatus())) {
+            res.put("success", false);
+            res.put("message", "您的商家账号尚未通过审核，无法发布商品");
+            return res;
+        }
+
         String id = UUID.randomUUID().toString();
         String date = LocalDateTime.now().format(DTF);
         String thumb = null;
@@ -162,15 +203,15 @@ public class SecondhandController {
         item.setSellerName(username);
         item.setThumb(thumb);
         item.setImages(String.join(",", saved));
-        item.setStatus("available");
+        item.setStatus("pending_review");
 
         itemMapper.insert(item);
         res.put("success", true);
+        res.put("message", "商品发布成功，等待平台审核");
         res.put("data", item);
         return res;
     }
 
-    // PUT /items/{id}
     @PutMapping(value = "/items/{id}", consumes = {"multipart/form-data"})
     public Item updateItem(@PathVariable String id,
                            @RequestHeader(value = "X-User-Id", required = false) Long userId,
@@ -205,26 +246,24 @@ public class SecondhandController {
         existing.setCategory(category);
         existing.setThumb(thumb);
         if (!saved.isEmpty()) existing.setImages(String.join(",", saved));
+        existing.setStatus("pending_review");
 
         itemMapper.update(existing);
         return existing;
     }
 
-    // DELETE /items/{id}
     @DeleteMapping("/items/{id}")
     public void deleteItem(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         itemMapper.delete(id, userId);
     }
 
-    // GET /categories
     @GetMapping("/categories")
-    public CategoriesResponse getCategories() {
-        System.out.println("Fetching categories...");
-        List<String> cats = itemMapper.categories();
-        return new CategoriesResponse(cats);
+    public Map<String, List<String>> getCategories() {
+        Map<String, List<String>> result = new HashMap<>();
+        result.put("categories", Arrays.asList("灵感", "思考", "模版", "资源"));
+        return result;
     }
 
-    // Cart endpoints
     @GetMapping("/cart")
     public CartResponse getCart(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         List<CartItem> items = cartMapper.getByUser(userId);
@@ -232,266 +271,383 @@ public class SecondhandController {
     }
 
     @PostMapping("/cart")
-    public Map<String, Object> addToCart(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                          @RequestHeader(value = "X-User-Role", required = false) String role,
-                          @RequestBody Map<String, Object> payload) {
+    public Map<String, Object> addToCart(@RequestBody Map<String, Object> body,
+                                         @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Map<String, Object> res = new HashMap<>();
-        
         if (userId == null) {
             res.put("success", false);
             res.put("message", "未登录");
             return res;
         }
-        
-        if ("seller".equals(role)) {
-            res.put("success", false);
-            res.put("message", "商家用户不能购买商品");
-            return res;
-        }
-        
-        String itemId = String.valueOf(payload.get("itemId"));
-        int quantity = ((Number) payload.getOrDefault("quantity", 1)).intValue();
-        Item it = itemMapper.getById(itemId);
-        if (it == null) {
-            res.put("success", false);
-            res.put("message", "商品不存在");
-            return res;
-        }
-        CartItem existing = null;
-        // naive: always insert new cart item
-        CartItem ci = new CartItem();
-        ci.setId(UUID.randomUUID().toString());
-        ci.setItemId(itemId);
-        ci.setTitle(it.getTitle());
-        ci.setPrice(it.getPrice());
-        ci.setThumb(it.getThumb());
-        ci.setQuantity(quantity);
-        ci.setUserId(userId);
-        cartMapper.insert(ci);
+
+        String itemId = (String) body.get("itemId");
+        String title = (String) body.get("title");
+        double price = body.get("price") != null ? Double.parseDouble(body.get("price").toString()) : 0;
+        String thumb = (String) body.get("thumb");
+        int quantity = body.get("quantity") != null ? Integer.parseInt(body.get("quantity").toString()) : 1;
+
+        CartItem cartItem = new CartItem();
+        cartItem.setId(UUID.randomUUID().toString());
+        cartItem.setItemId(itemId);
+        cartItem.setTitle(title);
+        cartItem.setPrice(price);
+        cartItem.setThumb(thumb);
+        cartItem.setQuantity(quantity);
+        cartItem.setUserId(userId);
+
+        cartMapper.insert(cartItem);
         res.put("success", true);
+        res.put("message", "加入购物车成功");
         return res;
     }
 
     @PutMapping("/cart/{id}")
-    public void updateCartItem(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) Long userId,
-                               @RequestBody Map<String, Object> payload) {
-        int quantity = ((Number) payload.getOrDefault("quantity", 1)).intValue();
-        cartMapper.updateQuantity(id, userId, quantity);
+    public Map<String, Object> updateCartItem(@PathVariable String id, @RequestBody Map<String, Object> body) {
+        Map<String, Object> res = new HashMap<>();
+        int quantity = body.get("quantity") != null ? Integer.parseInt(body.get("quantity").toString()) : 1;
+        cartMapper.updateQuantity(id, quantity);
+        res.put("success", true);
+        return res;
     }
 
     @DeleteMapping("/cart/{id}")
-    public void removeFromCart(@PathVariable String id, @RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        cartMapper.delete(id, userId);
+    public Map<String, Object> removeFromCart(@PathVariable String id) {
+        Map<String, Object> res = new HashMap<>();
+        cartMapper.delete(id);
+        res.put("success", true);
+        res.put("message", "移除成功");
+        return res;
     }
 
     @DeleteMapping("/cart")
-    public void clearCart(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        cartMapper.clear(userId);
-    }
-
-    // Messages
-    @GetMapping("/messages/conversations")
-    public Object getConversations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        List<Map<String, Object>> conversations = messageMapper.getConversations(userId);
+    public Map<String, Object> clearCart(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
         Map<String, Object> res = new HashMap<>();
-        res.put("conversations", conversations);
-        res.put("status", "ok");
-        return res;
-    }
-
-    @GetMapping("/messages/item/{itemId}")
-    public Object getMessagesByItem(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                    @PathVariable String itemId) {
-        List<Message> msgs = messageMapper.getMessagesByItem(userId, itemId);
-        Map<String, Object> res = new HashMap<>();
-        res.put("messages", msgs);
-        res.put("status", "ok");
-        return res;
-    }
-
-    @GetMapping("/messages/conversation")
-    public Object getConversation(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                  @RequestParam Long withUserId,
-                                  @RequestParam String itemId) {
-        List<Message> msgs = messageMapper.getConversation(userId, withUserId, itemId);
-        messageMapper.markAsRead(userId, withUserId, itemId);
-        Map<String, Object> res = new HashMap<>();
-        res.put("messages", msgs);
-        res.put("status", "ok");
-        return res;
-    }
-
-    @PostMapping("/messages")
-    public Map<String, Object> sendMessage(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                           @RequestHeader(value = "X-User-Username", required = false) String username,
-                                           @RequestBody Map<String, Object> payload) {
-        Long toUserId = ((Number) payload.get("toUserId")).longValue();
-        String content = String.valueOf(payload.get("content"));
-        String itemId = String.valueOf(payload.get("itemId"));
-        String itemTitle = String.valueOf(payload.get("itemTitle"));
-        
-        Message m = new Message();
-        m.setId(UUID.randomUUID().toString());
-        m.setFromUserId(userId);
-        m.setFromUsername(username);
-        m.setToUserId(toUserId);
-        m.setContent(content);
-        m.setDate(LocalDateTime.now().format(DTF));
-        m.setItemId(itemId);
-        m.setItemTitle(itemTitle);
-        m.setIsRead(0);
-        messageMapper.insert(m);
-        
-        Map<String, Object> res = new HashMap<>();
-        res.put("status", "ok");
-        res.put("message", m);
-        return res;
-    }
-    
-    // GET /messages/sellers - admin can get all sellers for messaging
-    @GetMapping("/messages/sellers")
-    public Object getSellers(@RequestHeader(value = "X-User-Role", required = false) String role) {
-        Map<String, Object> res = new HashMap<>();
-        if (!"admin".equals(role)) {
+        if (userId == null) {
             res.put("success", false);
-            res.put("message", "无权限");
+            res.put("message", "未登录");
             return res;
         }
-        List<User> sellers = userMapper.getSellers();
+        cartMapper.clearByUser(userId);
         res.put("success", true);
-        res.put("sellers", sellers);
+        res.put("message", "清空购物车成功");
         return res;
     }
 
-    @GetMapping("/messages/unread-count")
-    public UnreadCountResponse getUnreadCount(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
-        int c = messageMapper.countUnread(userId);
-        return new UnreadCountResponse(c);
+    @PostMapping("/orders")
+    public Map<String, Object> createOrder(@RequestBody CreateOrderRequest request,
+                                           @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        List<CartItem> cartItems = cartMapper.getByUser(userId);
+        if (cartItems == null || cartItems.isEmpty()) {
+            res.put("success", false);
+            res.put("message", "购物车为空");
+            return res;
+        }
+
+        User buyer = userMapper.getById(userId);
+        if (buyer.getBalance() == null || buyer.getBalance() < request.getTotalAmount()) {
+            res.put("success", false);
+            res.put("message", "余额不足");
+            return res;
+        }
+
+        String orderId = UUID.randomUUID().toString();
+        String date = LocalDateTime.now().format(DTF);
+
+        Order order = new Order();
+        order.setOrderId(orderId);
+        order.setUserId(userId);
+        order.setTotalAmount(request.getTotalAmount());
+        order.setStatus("pending");
+        order.setDate(date);
+        order.setShippingAddress(request.getShippingAddress());
+
+        orderMapper.insert(order);
+
+        for (CartItem item : cartItems) {
+            item.setOrderId(orderId);
+            orderMapper.insertOrderItem(item);
+        }
+
+        cartMapper.clearByUser(userId);
+
+        res.put("success", true);
+        res.put("orderId", orderId);
+        res.put("message", "订单创建成功");
+        return res;
     }
 
-    // Orders
     @GetMapping("/orders")
     public OrdersResponse getOrders(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new OrdersResponse(new ArrayList<>());
         List<Order> orders = orderMapper.getByUser(userId);
         return new OrdersResponse(orders);
     }
 
-    @PostMapping("/orders")
-    public Map<String, Object> createOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                           @RequestBody CreateOrderRequest req) {
-        String orderId = UUID.randomUUID().toString();
-        Order order = new Order();
-        order.setOrderId(orderId);
-        order.setUserId(userId);
-        order.setTotalAmount(req.getTotalAmount());
-        order.setStatus("created");
-        order.setDate(LocalDateTime.now().format(DTF));
-        orderMapper.insert(order);
-        
-        // 从购物车读取商品并插入订单商品表
-        List<CartItem> cartItems = cartMapper.getByUser(userId);
-        for (CartItem item : cartItems) {
-            if (item.getItemId() == null || item.getItemId().isEmpty()) {
-                continue; // 跳过无效的购物车商品
-            }
-            CartItem orderItem = new CartItem();
-            orderItem.setId(UUID.randomUUID().toString());
-            orderItem.setOrderId(orderId);
-            orderItem.setItemId(item.getItemId());
-            orderItem.setTitle(item.getTitle());
-            orderItem.setPrice(item.getPrice());
-            orderItem.setQuantity(item.getQuantity());
-            orderMapper.insertOrderItem(orderItem);
-        }
-        
-        // 清空购物车
-        cartMapper.clear(userId);
-        
-        Map<String, Object> res = new HashMap<>();
-        res.put("orderId", orderId);
-        res.put("status", "created");
-        return res;
-    }
-
-    @PostMapping("/orders/{orderId}/pay")
-    public Map<String, Object> payOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                        @PathVariable String orderId,
-                                        @RequestBody Map<String, Object> payload) {
-        // paymentMethod ignored in demo
-        orderMapper.updateStatus(orderId, userId, "paid");
-        Map<String, Object> r = new HashMap<>();
-        r.put("success", true);
-        r.put("orderId", orderId);
-        r.put("status", "paid");
-        return r;
-    }
-
-    @PutMapping("/orders/{orderId}/cancel")
-    public void cancelOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                            @PathVariable String orderId) {
-        orderMapper.updateStatus(orderId, userId, "cancelled");
-    }
-
-    @PutMapping("/orders/{orderId}/ship")
-    public Map<String, Object> shipOrder(@PathVariable String orderId,
-                                         @RequestBody Map<String, Object> payload) {
-        String trackingNumber = String.valueOf(payload.getOrDefault("trackingNumber", ""));
-        orderMapper.updateOrderStatus(orderId, "shipped", trackingNumber);
-        Map<String, Object> r = new HashMap<>();
-        r.put("success", true);
-        r.put("orderId", orderId);
-        r.put("status", "shipped");
-        r.put("trackingNumber", trackingNumber);
-        return r;
-    }
-
-    // 获取商家的所有订单（管理员查看）
     @GetMapping("/orders/seller/{sellerId}")
     public List<Order> getOrdersBySeller(@PathVariable Long sellerId) {
         return orderMapper.getOrdersBySellerId(sellerId);
     }
 
-    @PutMapping("/orders/{orderId}/confirm")
-    public void confirmOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                             @PathVariable String orderId) {
-        orderMapper.updateStatus(orderId, userId, "completed");
+    @GetMapping("/orders/{orderId}")
+    public Order getOrder(@PathVariable String orderId) {
+        return orderMapper.getByOrderId(orderId);
     }
 
-    @PutMapping("/orders/{orderId}/return")
-    public Map<String, Object> returnOrder(@RequestHeader(value = "X-User-Id", required = false) Long userId,
-                                           @PathVariable String orderId,
-                                           @RequestBody Map<String, Object> payload) {
-        String reason = String.valueOf(payload.getOrDefault("reason", ""));
-        orderMapper.updateStatus(orderId, userId, "cancelled");
-        Map<String, Object> r = new HashMap<>();
-        r.put("success", true);
-        r.put("message", "退货申请已提交，原因：" + reason);
-        return r;
+    @PostMapping("/orders/{orderId}/pay")
+    public Map<String, Object> payOrder(@PathVariable String orderId,
+                                        @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        User buyer = userMapper.getById(userId);
+        if (buyer.getBalance() == null || buyer.getBalance() < order.getTotalAmount()) {
+            res.put("success", false);
+            res.put("message", "余额不足");
+            return res;
+        }
+
+        double newBalance = buyer.getBalance() - order.getTotalAmount();
+        userMapper.updateBalance(userId, newBalance);
+
+        String payTime = LocalDateTime.now().format(DTF);
+        orderMapper.updateStatus(orderId, userId, "paid");
+
+        res.put("success", true);
+        res.put("message", "支付成功");
+        res.put("balance", newBalance);
+        return res;
     }
 
-    // Reviews
-    @GetMapping("/items/{itemId}/reviews")
+    @PostMapping("/orders/{orderId}/ship")
+    public Map<String, Object> shipOrder(@PathVariable String orderId,
+                                          @RequestBody Map<String, String> body) {
+        Map<String, Object> res = new HashMap<>();
+        String trackingNumber = body.get("trackingNumber");
+        if (trackingNumber == null || trackingNumber.trim().isEmpty()) {
+            res.put("success", false);
+            res.put("message", "物流单号不能为空");
+            return res;
+        }
+
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        orderMapper.updateOrderStatus(orderId, "shipped", trackingNumber);
+
+        res.put("success", true);
+        res.put("message", "发货成功");
+        return res;
+    }
+
+    @PostMapping("/orders/{orderId}/confirm")
+    public Map<String, Object> confirmOrder(@PathVariable String orderId,
+                                            @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        String receiveTime = LocalDateTime.now().format(DTF);
+        orderMapper.updateReceiveTime(orderId, receiveTime);
+
+        res.put("success", true);
+        res.put("message", "确认收货成功");
+        return res;
+    }
+
+    @PostMapping("/orders/{orderId}/refund")
+    public Map<String, Object> applyRefund(@PathVariable String orderId,
+                                           @RequestBody Map<String, String> body,
+                                           @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        String reason = body.get("reason");
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        String refundTime = LocalDateTime.now().format(DTF);
+        orderMapper.updateRefundStatus(orderId, "pending", reason, refundTime);
+
+        res.put("success", true);
+        res.put("message", "退款申请已提交");
+        return res;
+    }
+
+    @PostMapping("/orders/{orderId}/refund/review")
+    public Map<String, Object> reviewRefund(@PathVariable String orderId,
+                                             @RequestBody Map<String, String> body) {
+        Map<String, Object> res = new HashMap<>();
+        String action = body.get("action");
+        if (action == null || (!action.equals("approve") && !action.equals("reject"))) {
+            res.put("success", false);
+            res.put("message", "无效的操作");
+            return res;
+        }
+
+        Order order = orderMapper.getByOrderId(orderId);
+        if (order == null) {
+            res.put("success", false);
+            res.put("message", "订单不存在");
+            return res;
+        }
+
+        String refundTime = LocalDateTime.now().format(DTF);
+
+        if ("approve".equals(action)) {
+            User buyer = userMapper.getById(order.getUserId());
+            double newBalance = (buyer.getBalance() != null ? buyer.getBalance() : 0.0) + order.getTotalAmount();
+            userMapper.updateBalance(order.getUserId(), newBalance);
+
+            orderMapper.processRefund(orderId, "cancelled", "refunded", refundTime);
+
+            res.put("success", true);
+            res.put("message", "退款已处理，款项已退回买家账户");
+        } else {
+            orderMapper.updateRefundStatus(orderId, "rejected", order.getRefundReason(), refundTime);
+
+            res.put("success", true);
+            res.put("message", "退款申请已拒绝");
+        }
+
+        return res;
+    }
+
+    @GetMapping("/orders/refunds/pending")
+    public List<Order> getPendingRefunds(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new ArrayList<>();
+        return orderMapper.getPendingRefundsBySellerId(userId);
+    }
+
+    @GetMapping("/messages")
+    public MessagesResponse getMessages(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new MessagesResponse(new ArrayList<>());
+        List<Message> messages = messageMapper.getByUser(userId);
+        return new MessagesResponse(messages);
+    }
+
+    @GetMapping("/messages/conversations")
+    public MessagesResponse getConversations(@RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new MessagesResponse(new ArrayList<>());
+        List<Message> conversations = messageMapper.getConversations(userId);
+        return new MessagesResponse(conversations);
+    }
+
+    @GetMapping("/messages/{withUserId}")
+    public MessagesResponse getConversation(@PathVariable Long withUserId,
+                                             @RequestParam(required = false) String itemId,
+                                             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
+        if (userId == null) return new MessagesResponse(new ArrayList<>());
+        List<Message> messages = messageMapper.getConversation(userId, withUserId, itemId);
+        return new MessagesResponse(messages);
+    }
+
+    @PostMapping("/messages")
+    public Map<String, Object> sendMessage(@RequestBody Map<String, Object> body,
+                                           @RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                           @RequestHeader(value = "X-User-Username", required = false) String username) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        Long toUserId = Long.parseLong(body.get("toUserId").toString());
+        String content = (String) body.get("content");
+        String itemId = body.containsKey("itemId") ? (String) body.get("itemId") : null;
+        String itemTitle = body.containsKey("itemTitle") ? (String) body.get("itemTitle") : null;
+
+        Message message = new Message();
+        message.setId(UUID.randomUUID().toString());
+        message.setFromUserId(userId);
+        message.setFromUsername(username);
+        message.setToUserId(toUserId);
+        message.setContent(content);
+        message.setItemId(itemId);
+        message.setItemTitle(itemTitle);
+        message.setDate(LocalDateTime.now().format(DTF));
+
+        messageMapper.insert(message);
+
+        res.put("success", true);
+        res.put("message", message);
+        return res;
+    }
+
+    @GetMapping("/reviews/item/{itemId}")
     public ReviewsResponse getItemReviews(@PathVariable String itemId) {
         List<Review> reviews = reviewMapper.getByItem(itemId);
         return new ReviewsResponse(reviews);
     }
 
-    @PostMapping("/items/{itemId}/reviews")
-    public Review submitReview(@PathVariable String itemId,
-                               @RequestHeader(value = "X-User-Id", required = false) Long userId,
-                               @RequestHeader(value = "X-User-Username", required = false) String username,
-                               @RequestBody Map<String, Object> payload) {
-        Review r = new Review();
-        r.setId(UUID.randomUUID().toString());
-        r.setItemId(itemId);
-        r.setUserId(userId);
-        r.setUsername(username);
-        r.setRating(((Number) payload.getOrDefault("rating", 5)).intValue());
-        r.setComment(String.valueOf(payload.getOrDefault("comment", "")));
-        r.setDate(LocalDateTime.now().format(DTF));
-        reviewMapper.insert(r);
-        return r;
+    @PostMapping("/reviews")
+    public Map<String, Object> submitReview(@RequestBody Map<String, Object> body,
+                                             @RequestHeader(value = "X-User-Id", required = false) Long userId,
+                                             @RequestHeader(value = "X-User-Username", required = false) String username) {
+        Map<String, Object> res = new HashMap<>();
+        if (userId == null) {
+            res.put("success", false);
+            res.put("message", "未登录");
+            return res;
+        }
+
+        String itemId = (String) body.get("itemId");
+        int rating = body.get("rating") != null ? Integer.parseInt(body.get("rating").toString()) : 5;
+        String comment = body.containsKey("comment") ? (String) body.get("comment") : "";
+
+        Review review = new Review();
+        review.setId(UUID.randomUUID().toString());
+        review.setItemId(itemId);
+        review.setUserId(userId);
+        review.setUsername(username);
+        review.setRating(rating);
+        review.setComment(comment);
+        review.setDate(LocalDateTime.now().format(DTF));
+
+        reviewMapper.insert(review);
+
+        res.put("success", true);
+        res.put("message", "评价成功");
+        return res;
     }
-
 }
-
