@@ -741,6 +741,7 @@ public class SecondhandController {
     @GetMapping("/items/{itemId}/reviews")
     public ReviewsResponse getItemReviews(@PathVariable String itemId) {
         List<Review> reviews = reviewMapper.getByItem(itemId);
+        System.out.println("DEBUG: getItemReviews called for itemId: " + itemId + ", found " + reviews.size() + " reviews");
         return new ReviewsResponse(reviews);
     }
 
@@ -755,7 +756,13 @@ public class SecondhandController {
             return res;
         }
 
-        String itemId = (String) body.get("itemId");
+        Object itemIdObj = body.get("itemId");
+        if (itemIdObj == null) {
+            res.put("success", false);
+            res.put("message", "商品ID不能为空");
+            return res;
+        }
+        String itemId = itemIdObj.toString();
         int rating = body.get("rating") != null ? Integer.parseInt(body.get("rating").toString()) : 5;
         String comment = body.containsKey("comment") ? (String) body.get("comment") : "";
 
